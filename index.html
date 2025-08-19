@@ -1720,6 +1720,11 @@
                         <strong>💡 Default Assignments:</strong> <span id="defaultAssignmentsDisplay">Loading...</span>
                     </span>
                 </div>
+                <div id="databaseStatusIndicator" style="background: #e8f5e8; padding: 8px 12px; border-radius: 4px; margin-top: 8px; border: 1px solid #c3e6c3; text-align: center; display: none;">
+                    <span id="databaseStatusText" style="color: #2e7d32; font-size: 0.9rem;">
+                        <strong>🗄️ Database:</strong> <span id="databaseStatus">Checking...</span>
+                    </span>
+                </div>
                 
                 <!-- Admin Login Button -->
                 <button id="adminLoginBtn" onclick="showLoginScreen()" style="position: absolute; top: 10px; right: 10px; background: #3498db; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; font-weight: 500; display: none;">
@@ -2068,6 +2073,9 @@
         </div>
     </div>
 
+    <!-- API Service -->
+            <script src="api/api-service.js"></script>
+    
     <script>
         // Authentication System
         let currentUser = null;
@@ -2207,7 +2215,9 @@
             document.getElementById('userInfo').style.display = 'block';
             
             // Initialize app based on user role
-            initializeApp();
+            initializeApp().catch(error => {
+                console.error('Error initializing app:', error);
+            });
         }
 
         function logout() {
@@ -2267,7 +2277,7 @@
             }, 500);
         }
 
-        function initializeApp() {
+        async function initializeApp() {
             // Show main app
             document.querySelector('.container').style.display = 'block';
             
@@ -2275,13 +2285,18 @@
             setupRoleBasedAccess();
             
             // Load saved configuration (including default employees)
-            loadSavedConfiguration();
+            await loadSavedConfiguration();
             
             // Load saved data from localStorage
-            if (loadDataFromStorage()) {
-                console.log('Data loaded from storage successfully');
-            } else {
-                console.log('No saved data found, starting fresh');
+            try {
+                const dataLoaded = await loadDataFromStorage();
+                if (dataLoaded) {
+                    console.log('Data loaded from storage successfully');
+                } else {
+                    console.log('No saved data found, starting fresh');
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
             }
             
             // Start auto-save functionality
@@ -2427,6 +2442,7 @@
         }
 
         function generateCalendar() {
+            console.log('generateCalendar called with shiftData:', shiftData);
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
             
@@ -3051,7 +3067,7 @@
             reasonSection.style.display = hasEmployees ? 'none' : 'block';
         }
 
-        function saveShifts() {
+        async function saveShifts() {
             // Check if user has permission to save
             if (!isAdmin) {
                 alert('🔒 Access Denied: Only managers and administrators can save shift data.');
@@ -3108,10 +3124,18 @@
             
             shiftData[dateKey] = dayData;
             
-            // Auto-save data to localStorage
-            saveDataToStorage();
-            
-            console.log('Saved shift data:', dateKey, dayData);
+            try {
+                // Save to database
+                await apiService.saveShifts(dateKey, dayData);
+                console.log('Saved shift data to database:', dateKey, dayData);
+                
+                // Update status indicator
+                updateDataStatusIndicator(new Date().toISOString());
+            } catch (error) {
+                console.error('Error saving to database:', error);
+                // Fallback to localStorage
+                saveDataToStorage();
+            }
             
             closeModal();
             generateCalendar();
@@ -5194,22 +5218,42 @@
         }
 
         // Data persistence functions
-        function saveDataToStorage() {
+        async function saveDataToStorage() {
             try {
-                const dataToSave = {
-                    shiftData: shiftData,
-                    allEmployees: allEmployees,
-                    currentDate: currentDate.toISOString(),
-                    lastSaved: new Date().toISOString()
+                // Save shift data to database
+                for (const [dateKey, dayData] of Object.entries(shiftData)) {
+                    await apiService.saveShifts(dateKey, dayData);
+                }
+                
+                // Save configuration to database
+                const configData = {
+                    defaultEmployees,
+                    starRates,
+                    weekendRate,
+                    bonuses,
+                    prizes
                 };
-                localStorage.setItem('shiftManagerData', JSON.stringify(dataToSave));
+                await apiService.saveConfiguration(configData);
                 
                 // Update status indicator
                 updateDataStatusIndicator(new Date().toISOString());
                 
-                console.log('Data saved successfully at:', new Date().toLocaleString());
+                console.log('Data saved to database successfully at:', new Date().toLocaleString());
             } catch (error) {
-                console.error('Error saving data:', error);
+                console.error('Error saving data to database:', error);
+                // Fallback to localStorage if database fails
+                try {
+                    const dataToSave = {
+                        shiftData: shiftData,
+                        allEmployees: allEmployees,
+                        currentDate: currentDate.toISOString(),
+                        lastSaved: new Date().toISOString()
+                    };
+                    localStorage.setItem('shiftManagerData', JSON.stringify(dataToSave));
+                    console.log('Data saved to localStorage as fallback');
+                } catch (localError) {
+                    console.error('Error saving to localStorage:', localError);
+                }
             }
         }
 
@@ -5240,7 +5284,98 @@
             }
         }
 
-        function loadDataFromStorage() {
+        function updateDatabaseStatusIndicator(status, message) {
+            const statusIndicator = document.getElementById('databaseStatusIndicator');
+            const statusText = document.getElementById('databaseStatus');
+            
+            if (status === 'connected') {
+                statusIndicator.style.background = '#e8f5e8';
+                statusIndicator.style.borderColor = '#c3e6c3';
+                statusText.style.color = '#2e7d32';
+                statusText.textContent = `✅ ${message}`;
+            } else if (status === 'error') {
+                statusIndicator.style.background = '#ffebee';
+                statusIndicator.style.borderColor = '#ffcdd2';
+                statusText.style.color = '#c62828';
+                statusText.textContent = `❌ ${message}`;
+            } else {
+                statusIndicator.style.background = '#fff3e0';
+                statusIndicator.style.borderColor = '#ffe0b2';
+                statusText.style.color = '#ef6c00';
+                statusText.textContent = `⏳ ${message}`;
+            }
+            
+            statusIndicator.style.display = 'block';
+        }
+
+        async function loadDataFromStorage() {
+            try {
+                updateDatabaseStatusIndicator('checking', 'Testing connection...');
+                
+                // Test API connection first
+                const isConnected = await apiService.testConnection();
+                
+                if (isConnected) {
+                    console.log('✅ Connected to database, loading data...');
+                    updateDatabaseStatusIndicator('connected', 'Connected - Loading data...');
+                    
+                    // Load shifts from database
+                    const shiftsData = await apiService.getShifts();
+                    console.log('Shifts data loaded from database:', shiftsData);
+                    shiftData = shiftsData;
+                    console.log('shiftData after assignment:', shiftData);
+                    
+                    // Load employees from database
+                    const employees = await apiService.getEmployees();
+                    allEmployees = employees;
+                    
+                    // Load configuration from database
+                    const config = await apiService.getConfiguration();
+                    if (config.defaultEmployees) {
+                        defaultEmployees = config.defaultEmployees;
+                    }
+                    if (config.starRates) {
+                        starRates = config.starRates;
+                    }
+                    if (config.weekendRate) {
+                        weekendRate = config.weekendRate;
+                    }
+                    if (config.bonuses) {
+                        bonuses = config.bonuses;
+                    }
+                    if (config.prizes) {
+                        prizes = config.prizes;
+                    }
+                    
+                    // Update status indicator
+                    updateDataStatusIndicator(new Date().toISOString());
+                    updateDatabaseStatusIndicator('connected', 'Connected - Data synced');
+                    
+                    console.log('Data loaded successfully from database');
+                    
+                    // Trigger auto-updates after loading data
+                    setTimeout(() => {
+                        triggerAllAutoUpdates();
+                    }, 500);
+                    
+                    // Generate calendar with loaded data
+                    generateCalendar();
+                    
+                    return true;
+                } else {
+                    console.log('❌ Database connection failed, falling back to localStorage');
+                    updateDatabaseStatusIndicator('error', 'Connection failed - Using local storage');
+                    return loadFromLocalStorage();
+                }
+            } catch (error) {
+                console.error('Error loading data from database:', error);
+                console.log('Falling back to localStorage...');
+                updateDatabaseStatusIndicator('error', 'Error - Using local storage');
+                return loadFromLocalStorage();
+            }
+        }
+
+        function loadFromLocalStorage() {
             try {
                 const savedData = localStorage.getItem('shiftManagerData');
                 if (savedData) {
@@ -5272,7 +5407,7 @@
                     // Update status indicator
                     updateDataStatusIndicator(parsedData.lastSaved);
                     
-                    console.log('Data loaded successfully from:', parsedData.lastSaved ? new Date(parsedData.lastSaved).toLocaleString() : 'unknown time');
+                    console.log('Data loaded successfully from localStorage:', parsedData.lastSaved ? new Date(parsedData.lastSaved).toLocaleString() : 'unknown time');
                     
                     // Check if data appears to be filtered (only one employee has data)
                     const employeeCount = new Set();
@@ -5297,10 +5432,13 @@
                         triggerAllAutoUpdates();
                     }, 500);
                     
+                    // Generate calendar with loaded data
+                    generateCalendar();
+                    
                     return true;
                 }
             } catch (error) {
-                console.error('Error loading data:', error);
+                console.error('Error loading data from localStorage:', error);
             }
             return false;
         }
@@ -5453,7 +5591,7 @@
             }
         }
 
-        function savePredefinedLists() {
+        async function savePredefinedLists() {
             // Check if user has permission to save configuration
             if (!isAdmin) {
                 alert('🔒 Access Denied: Only managers and administrators can save configuration.');
@@ -5532,17 +5670,27 @@
                     third: parseFloat(document.getElementById('prize-3rd').value)
                 };
 
-                // Save to localStorage
+                // Save to database
                 const configData = {
                     defaultEmployees,
                     starRates,
                     weekendRate,
                     bonuses,
-                    prizes,
-                    savedAt: new Date().toISOString()
+                    prizes
                 };
 
-                localStorage.setItem('shiftManagerConfig', JSON.stringify(configData));
+                try {
+                    await apiService.saveConfiguration(configData);
+                    console.log('Configuration saved to database successfully');
+                } catch (error) {
+                    console.error('Error saving to database:', error);
+                    // Fallback to localStorage
+                    localStorage.setItem('shiftManagerConfig', JSON.stringify({
+                        ...configData,
+                        savedAt: new Date().toISOString()
+                    }));
+                    console.log('Configuration saved to localStorage as fallback');
+                }
 
                 // Update global variables
                 // Note: These variables are already declared globally, so we just need to update their values
@@ -5574,11 +5722,11 @@
 
 
 
-        function loadSavedConfiguration() {
+        async function loadSavedConfiguration() {
             try {
-                const savedConfig = localStorage.getItem('shiftManagerConfig');
-                if (savedConfig) {
-                    const config = JSON.parse(savedConfig);
+                // Try to load from database first
+                try {
+                    const config = await apiService.getConfiguration();
                     
                     // Update default employees from saved config
                     if (config.defaultEmployees) {
@@ -5642,6 +5790,83 @@
                     }
                     if (config.prizes) {
                         prizes = config.prizes;
+                    }
+                    
+                    console.log('Configuration loaded from database successfully');
+                } catch (error) {
+                    console.error('Error loading from database:', error);
+                    console.log('Falling back to localStorage...');
+                    
+                    // Fallback to localStorage
+                    const savedConfig = localStorage.getItem('shiftManagerConfig');
+                    if (savedConfig) {
+                        const config = JSON.parse(savedConfig);
+                        
+                        // Update default employees from saved config
+                        if (config.defaultEmployees) {
+                            defaultEmployees = config.defaultEmployees;
+                            
+                            // Update HTML input fields to match saved configuration
+                            if (defaultEmployees.morning && defaultEmployees.morning.length >= 2) {
+                                document.getElementById('default-morning-1').value = defaultEmployees.morning[0] || 'Bhargav';
+                                document.getElementById('default-morning-2').value = defaultEmployees.morning[1] || 'Pranav';
+                            }
+                            if (defaultEmployees.afternoon && defaultEmployees.afternoon.length >= 2) {
+                                document.getElementById('default-afternoon-1').value = defaultEmployees.afternoon[0] || 'Guru';
+                                document.getElementById('default-afternoon-2').value = defaultEmployees.afternoon[1] || 'Kalyan';
+                            }
+                            if (defaultEmployees.evening && defaultEmployees.evening.length >= 2) {
+                                document.getElementById('default-evening-1').value = defaultEmployees.evening[0] || 'Nawaz';
+                                document.getElementById('default-evening-2').value = defaultEmployees.evening[1] || 'Nithin';
+                            }
+                            if (defaultEmployees.night && defaultEmployees.night.length >= 2) {
+                                document.getElementById('default-night-1').value = defaultEmployees.night[0] || 'Vishrut';
+                                document.getElementById('default-night-2').value = defaultEmployees.night[1] || 'Vishnu';
+                            }
+                        }
+                        
+                        // Update star rates in HTML inputs
+                        if (config.starRates && config.starRates.length >= 4) {
+                            document.getElementById('star-rate-0-20').value = config.starRates[0]?.rate || '9';
+                            document.getElementById('star-rate-22-30').value = config.starRates[1]?.rate || '11';
+                            document.getElementById('star-rate-32-40').value = config.starRates[2]?.rate || '13.60';
+                            document.getElementById('star-rate-42-plus').value = config.starRates[3]?.rate || '14.60';
+                        }
+                        
+                        // Update weekend rate in HTML input
+                        if (config.weekendRate) {
+                            document.getElementById('weekend-rate').value = config.weekendRate;
+                        }
+                        
+                        // Update bonus amounts in HTML inputs
+                        if (config.bonuses) {
+                            document.getElementById('bonus-800-stars').value = config.bonuses.target800 || '1000';
+                            document.getElementById('bonus-20-days').value = config.bonuses.attendance20 || '1000';
+                            document.getElementById('bonus-fuel').value = config.bonuses.fuel || '1000';
+                        }
+                        
+                        // Update prize amounts in HTML inputs
+                        if (config.prizes) {
+                            document.getElementById('prize-1st').value = config.prizes.first || '1250';
+                            document.getElementById('prize-2nd').value = config.prizes.second || '750';
+                            document.getElementById('prize-3rd').value = config.prizes.third || '500';
+                        }
+                        
+                        // Update other global variables if needed
+                        if (config.starRates) {
+                            starRates = config.starRates;
+                        }
+                        if (config.weekendRate) {
+                            weekendRate = config.weekendRate;
+                        }
+                        if (config.bonuses) {
+                            bonuses = config.bonuses;
+                        }
+                        if (config.prizes) {
+                            prizes = config.prizes;
+                        }
+                        
+                        console.log('Configuration loaded from localStorage successfully');
                     }
                 }
                 
