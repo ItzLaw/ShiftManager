@@ -5,7 +5,7 @@ const path = require('path');
 const DatabaseService = require('./database');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
@@ -164,7 +164,7 @@ app.get('/api/health', (req, res) => {
 
 // Serve the main HTML file
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, '..', 'index.html'));
 });
 
 // Graceful shutdown
