@@ -1,14 +1,23 @@
 // API Service for Shift Manager App
 class ApiService {
     constructor() {
-        this.baseUrl = window.location.origin; // Automatically detect the server URL
+        // Handle both development and production environments
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            this.baseUrl = window.location.origin; // Local development
+        } else {
+            // Production - use the current domain
+            this.baseUrl = window.location.origin;
+        }
         this.apiUrl = `${this.baseUrl}/api`;
+        console.log('🔧 ApiService initialized with:', { baseUrl: this.baseUrl, apiUrl: this.apiUrl });
     }
 
     // Generic API call method
     async apiCall(endpoint, options = {}) {
         try {
             const url = `${this.apiUrl}${endpoint}`;
+            console.log(`🌐 Making API call to: ${url}`);
+            
             const response = await fetch(url, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -17,14 +26,19 @@ class ApiService {
                 ...options
             });
 
+            console.log(`📡 Response status: ${response.status} for ${endpoint}`);
+            
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
+                console.error(`❌ API error for ${endpoint}:`, { status: response.status, error: errorData });
                 throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
             }
 
-            return await response.json();
+            const data = await response.json();
+            console.log(`✅ API call successful for ${endpoint}:`, data);
+            return data;
         } catch (error) {
-            console.error(`API call failed for ${endpoint}:`, error);
+            console.error(`❌ API call failed for ${endpoint}:`, error);
             throw error;
         }
     }

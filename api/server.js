@@ -18,12 +18,18 @@ app.use(express.static('.'));
 // Initialize database service with error handling
 let db;
 try {
+    console.log('🔧 Initializing database service...');
+    console.log('🌍 Environment:', process.env.NODE_ENV);
+    console.log('🗄️ Database URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
+    
     db = new DatabaseService();
     // Initialize database tables
     db.initializeDatabase().catch(console.error);
+    console.log('✅ Database service initialized successfully');
 } catch (error) {
     console.error('❌ Failed to initialize database service:', error.message);
     console.log('⚠️  Application will continue but database features will not work');
+    console.log('💡 Check your DATABASE_URL environment variable');
 }
 
 // API Routes
@@ -159,7 +165,42 @@ app.post('/api/weekend-priority', async (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    res.json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        database: db ? 'Connected' : 'Not Available',
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
+// Test endpoint for debugging
+app.get('/api/test', (req, res) => {
+    res.json({ 
+        message: 'API is working!',
+        timestamp: new Date().toISOString(),
+        headers: req.headers,
+        url: req.url
+    });
+});
+
+// Global error handler
+app.use((error, req, res, next) => {
+    console.error('❌ Global error handler caught:', error);
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+    console.log(`❌ API route not found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+        error: 'API endpoint not found',
+        path: req.originalUrl,
+        method: req.method
+    });
 });
 
 // Serve the main HTML file

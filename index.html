@@ -2074,9 +2074,28 @@
     </div>
 
     <!-- API Service -->
-            <script src="api/api-service.js"></script>
+            <script src="api-service.js"></script>
     
     <script>
+        // Ensure apiService is available, create a fallback if not
+        if (typeof window.apiService === 'undefined') {
+            console.warn('⚠️ apiService not loaded, creating fallback...');
+            window.apiService = {
+                testConnection: async () => false,
+                getShifts: async () => ({}),
+                saveShifts: async () => ({ success: true }),
+                getEmployees: async () => ([]),
+                addEmployee: async () => ({ success: true }),
+                getConfiguration: async () => ({}),
+                saveConfiguration: async () => ({ success: true }),
+                getWeekendPriority: async () => ({}),
+                saveWeekendPriority: async () => ({ success: true }),
+                healthCheck: async () => ({ status: 'OFFLINE' })
+            };
+        } else {
+            console.log('✅ apiService loaded successfully:', window.apiService);
+        }
+        
         // Authentication System
         let currentUser = null;
         let isAdmin = false;
@@ -2153,9 +2172,27 @@
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
+            // Test API connection first
+            testApiConnection();
+            
             // Check if user is already logged in as admin
             checkAuthStatus();
         });
+
+        // Test API connection
+        async function testApiConnection() {
+            try {
+                console.log('🧪 Testing API connection...');
+                const isConnected = await apiService.testConnection();
+                if (isConnected) {
+                    console.log('✅ API connection successful');
+                } else {
+                    console.log('❌ API connection failed');
+                }
+            } catch (error) {
+                console.error('❌ API test error:', error);
+            }
+        }
 
         // Authentication Functions
         function checkAuthStatus() {
