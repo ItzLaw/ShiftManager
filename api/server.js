@@ -13,7 +13,11 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
-app.use(express.static('.'));
+
+
+
+// Serve static files from root directory
+app.use(express.static(path.join(__dirname, '..')));
 
 // Initialize database service with error handling
 let db;
@@ -182,6 +186,8 @@ app.get('/api/test', (req, res) => {
         url: req.url
     });
 });
+
+
 
 // Global error handler
 app.use((error, req, res, next) => {
