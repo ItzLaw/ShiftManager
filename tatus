@@ -1,0 +1,5 @@
+[33mb073ec7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix: attempt #2 at fixing prod db issue
+[33m15d6b5b[m fix: prod version not connecting to db
+[33medfa009[m fix: remove colliding functions and builds in vercel.json
+[33mb3bf91a[m feat: add entire backend
+[33m1fe927c[m feat: rename entry file to index.html
